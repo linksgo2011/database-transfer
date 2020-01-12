@@ -1,5 +1,6 @@
 package cn.printf.ddabatch.configuration;
 
+import cn.printf.ddabatch.provider.MapSqlParameterSourceProvider;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
@@ -15,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.ColumnMapRowMapper;
 
 import javax.sql.DataSource;
 import java.util.HashMap;
@@ -32,50 +34,57 @@ public class JobConfiguration {
 
     @Qualifier("mysqlDb")
     @Autowired
-    private  DataSource mysqlDb;
+    private DataSource mysqlDb;
 
     @Qualifier("gaussDb")
     @Autowired
-    private  DataSource gaussDb;
+    private DataSource gaussDb;
 
     @Bean
-    public Job transferDataJob(JobCompletionNotificationListener listener, Step step1) {
+    public Job transferDataJob(
+            JobCompletionNotificationListener listener
+    ) {
         return jobBuilderFactory.get("importUserJob")
                 .preventRestart()
                 .incrementer(new RunIdIncrementer())
                 .listener(listener)
-                .flow(step1)
-                .end()
+                .start(migrateUser())
+                .next(migrateUserBinary())
                 .build();
     }
 
-    @Bean
-    public Step step1() {
-        return stepBuilderFactory.get("step1")
+    public Step migrateUser() {
+        return stepBuilderFactory.get("migrateUser")
                 .<Map, Map>chunk(10)
-                .reader(reader())
-                .writer(writer())
+                .reader(reader("select * from users"))
+                .writer(writer("INSERT INTO  USERS(ID, NAME) VALUES (:ID, :NAME)"))
                 .build();
     }
 
-    public JdbcCursorItemReader reader() {
-        // TODO 检测表列名，然后加上 HEX
+    public Step migrateUserBinary() {
+        return stepBuilderFactory.get("migrateUser")
+                .<Map, Map>chunk(10)
+                .reader(reader("select * from USERS_BINARY_ID"))
+                .writer(writer("INSERT INTO USERS_BINARY_ID(ID, NAME) VALUES (:ID, :NAME)"))
+                .build();
+    }
 
+    public JdbcCursorItemReader reader(String sql) {
         return new JdbcCursorItemReaderBuilder()
-                .name("reader")
-                .rowMapper((rs, rowNum) -> {
-                    return new HashMap<>();
-                })
-                .sql("select * from users")
-                .dataSource(gaussDb)
+                .name("reader" + sql.hashCode())
+                .rowMapper(new ColumnMapRowMapper())
+                .sql(sql)
+                .dataSource(mysqlDb)
                 .build();
     }
 
-    public JdbcBatchItemWriter<Map> writer() {
-        return new JdbcBatchItemWriterBuilder<Map>()
-                .itemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>())
-                .sql("INSERT INTO  (first_name, last_name) VALUES (:firstName, :lastName)")
+    public JdbcBatchItemWriter<Map> writer(String sql) {
+        JdbcBatchItemWriter<Map> writer = new JdbcBatchItemWriterBuilder<Map>()
+                .itemSqlParameterSourceProvider(new MapSqlParameterSourceProvider())
+                .sql(sql)
                 .dataSource(gaussDb)
                 .build();
+        writer.afterPropertiesSet();
+        return writer;
     }
 }

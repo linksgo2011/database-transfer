@@ -1,6 +1,5 @@
 package cn.printf.ddabatch.configuration;
 
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.context.annotation.Bean;
@@ -19,15 +18,9 @@ public class DatabaseConfig {
         return DataSourceBuilder.create().build();
     }
 
-    @ConfigurationProperties(prefix = "spring.mysql.datasource")
-    @Bean(name = "mysqlDb")
-    public DataSource mysqlDb() {
-        return DataSourceBuilder.create().build();
-    }
-
-    @Bean(name = "gaussDb")
-    @ConfigurationProperties(prefix = "spring.gauss.datasource")
-    public DataSource gaussDb() {
+    @Bean(name = "primary")
+    @ConfigurationProperties(prefix = "spring.source.datasource")
+    public DataSource sourceDb() {
         return DataSourceBuilder.create().build();
     }
 }
